@@ -139,11 +139,41 @@ def plot_responders(freqs, stats, path):
     plt.close(fig)
 
 
+# Part 4: baseline subset and its composition.
+SUBSET_SQL = """
+SELECT sa.sample_id AS sample, sa.subject_id AS subject, su.project_id AS project,
+       su.condition, su.treatment, su.response, su.sex, su.age,
+       sa.sample_type, sa.time_from_treatment_start
+FROM samples sa
+JOIN subjects su ON su.subject_id = sa.subject_id
+WHERE su.condition = ? AND su.treatment = ? AND sa.sample_type = ?
+  AND sa.time_from_treatment_start = ?
+"""
+
+
+def subset_samples(conn, condition="melanoma", treatment="miraclib", sample_type="PBMC", time=0):
+    params = (condition, treatment, sample_type, time)
+    samples = pd.read_sql(SUBSET_SQL + " ORDER BY sa.sample_id", conn, params=params)
+    counts = {
+        "samples_per_project": pd.read_sql(
+            f"SELECT project, COUNT(*) AS n_samples FROM ({SUBSET_SQL}) GROUP BY project ORDER BY project",
+            conn, params=params),
+        "subjects_per_response": pd.read_sql(
+            f"SELECT response, COUNT(DISTINCT subject) AS n_subjects FROM ({SUBSET_SQL}) "
+            "GROUP BY response ORDER BY response", conn, params=params),
+        "subjects_per_sex": pd.read_sql(
+            f"SELECT sex, COUNT(DISTINCT subject) AS n_subjects FROM ({SUBSET_SQL}) GROUP BY sex ORDER BY sex",
+            conn, params=params),
+    }
+    return samples, counts
+
+
 def main():
     OUTPUT_DIR.mkdir(exist_ok=True)
     with connect() as conn:
         freqs = cell_frequencies(conn)
         cohort = cohort_frequencies(conn)
+        subset, subset_counts = subset_samples(conn)
 
     path = OUTPUT_DIR / "cell_frequencies.csv"
     freqs.to_csv(path, index=False)
@@ -162,6 +192,13 @@ def main():
     print(stats[cols].to_string(index=False, float_format="%.4f"))
     print("\n" + summarize(stats))
     print("\nWritten outputs/responder_stats.csv and outputs/responder_boxplots.png")
+
+    subset.to_csv(OUTPUT_DIR / "baseline_subset.csv", index=False)
+    print(f"\nPart 4: melanoma + miraclib + PBMC at baseline (day 0): {len(subset)} samples, "
+          f"{subset.subject.nunique()} subjects")
+    for name, table in subset_counts.items():
+        print(f"\n{name}:\n{table.to_string(index=False)}")
+    print("\nWritten outputs/baseline_subset.csv")
 
 
 if __name__ == "__main__":
