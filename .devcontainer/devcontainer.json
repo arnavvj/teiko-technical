@@ -1,0 +1,8 @@
+{
+  "name": "teiko-technical",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "forwardPorts": [8501],
+  "portsAttributes": {
+    "8501": { "label": "Dashboard", "onAutoForward": "openPreview" }
+  }
+}
